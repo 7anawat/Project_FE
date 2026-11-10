@@ -1,37 +1,88 @@
 import { useState } from 'react';
 import { useOrders } from '../../context/OrderContext';
-import { useAuth } from '../../auth/AuthContext';
 
 function AdminOrders() {
-  const { orders, approveOrder, rejectOrder, pendingCount } = useOrders();
-  const { member } = useAuth();
-  const [filter, setFilter] = useState('pending'); // 'pending' | 'approved' | 'rejected' | 'all'
+  const {
+    orders,
+    approveOrder,
+    rejectOrder,
+    pendingCount,
+    loading,
+    error,
+    refreshOrders,
+  } = useOrders();
+
+  const [filter, setFilter] = useState('pending');
   const [selectedSlip, setSelectedSlip] = useState(null);
   const [rejectingOrder, setRejectingOrder] = useState(null);
   const [rejectReason, setRejectReason] = useState('ยอดเงินในสลิปไม่ตรงกับยอดสั่งซื้อ');
   const [notification, setNotification] = useState(null);
+  const [processingOrderId, setProcessingOrderId] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   const shown = orders.filter((o) => {
     if (filter === 'all') return true;
     return o.status === filter;
   });
 
-  function handleApprove(order) {
-    const success = approveOrder(order.id, member?.displayName || 'Admin');
-    if (success) {
-      setNotification(`✓ ยืนยันการชำระเงินของ ${order.memberName} สำเร็จ! E-Book ถูกส่งเข้าคลังของสมาชิกแล้ว`);
+    async function handleApprove(order) {
+    if (processingOrderId !== null) return;
+
+    setProcessingOrderId(order.id);
+    setActionError(null);
+
+    try {
+      await approveOrder(order.id);
+
+      setNotification(
+        `✓ ยืนยันการชำระเงินของ ${order.memberName} สำเร็จ! E-Book ถูกส่งเข้าคลังของสมาชิกแล้ว`
+      );
+
       setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      console.error('Approve order failed:', err);
+
+      if (err.status === 409) {
+        setActionError('คำสั่งซื้อนี้ได้รับการตรวจสอบจากแอดมินคนอื่นแล้ว');
+      } else {
+        setActionError(err.message || 'ไม่สามารถอนุมัติคำสั่งซื้อได้');
+      }
+    } finally {
+      setProcessingOrderId(null);
     }
   }
 
-  function handleRejectSubmit(e) {
+  async function handleRejectSubmit(e) {
     e.preventDefault();
-    if (!rejectingOrder) return;
-    rejectOrder(rejectingOrder.id, rejectReason, member?.displayName || 'Admin');
-    setRejectingOrder(null);
-    setNotification(`✕ ปฏิเสธคำสั่งซื้อ ${rejectingOrder.id} เรียบร้อยแล้ว`);
-    setTimeout(() => setNotification(null), 4000);
+
+    if (!rejectingOrder || processingOrderId !== null) return;
+
+    const order = rejectingOrder;
+
+    setProcessingOrderId(order.id);
+    setActionError(null);
+
+    try {
+      await rejectOrder(order.id, rejectReason);
+
+      setRejectingOrder(null);
+      setNotification(`✕ ปฏิเสธคำสั่งซื้อ ${order.id} เรียบร้อยแล้ว`);
+
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      console.error('Reject order failed:', err);
+
+      if (err.status === 409) {
+        setActionError('คำสั่งซื้อนี้ได้รับการตรวจสอบจากแอดมินคนอื่นแล้ว');
+        setRejectingOrder(null);
+      } else {
+        setActionError(err.message || 'ไม่สามารถปฏิเสธคำสั่งซื้อได้');
+      }
+    } finally {
+      setProcessingOrderId(null);
+    }
   }
+  
 
   const tabClass = (f) =>
     `rounded-full px-4 py-1.5 text-xs font-semibold transition ${
@@ -66,6 +117,24 @@ function AdminOrders() {
           </button>
         </div>
       </div>
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={() => refreshOrders().catch(console.error)}
+          disabled={loading}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {loading ? 'กำลังโหลด...' : '↻ รีเฟรชรายการ'}
+        </button>
+      </div>
+
+      {(error || actionError) && (
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+          {actionError || error}
+        </div>
+      )}
+      
+      
+      
 
       {notification && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-semibold text-emerald-800 shadow-sm animate-fadeIn">
@@ -199,15 +268,19 @@ function AdminOrders() {
                   {/* ปุ่มดำเนินการ (เฉพาะ pending) */}
                   {order.status === 'pending' && (
                     <div className="mt-3 flex gap-2">
-                      <button
+                           <button
                         onClick={() => handleApprove(order)}
-                        className="flex-1 rounded-lg bg-emerald-600 py-2 text-center text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition active:scale-[0.98]"
+                        disabled={processingOrderId !== null}
+                        className="flex-1 rounded-lg bg-emerald-600 py-2 text-center text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        ✓ ยืนยันการโอนเงิน
+                        {processingOrderId === order.id
+                          ? 'กำลังดำเนินการ...'
+                          : '✓ ยืนยันการโอนเงิน'}
                       </button>
-                      <button
+                           <button
                         onClick={() => setRejectingOrder(order)}
-                        className="rounded-lg border border-red-300 px-3 py-2 text-center text-xs font-medium text-red-600 hover:bg-red-50 transition"
+                        disabled={processingOrderId !== null}
+                        className="rounded-lg border border-red-300 px-3 py-2 text-center text-xs font-medium text-red-600 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         ปฏิเสธ
                       </button>
@@ -216,7 +289,9 @@ function AdminOrders() {
 
                   {order.status === 'approved' && (
                     <p className="mt-3 text-[11px] text-emerald-700 text-center font-medium">
-                      อนุมัติแล้วโดย {order.reviewedBy} เมื่อ {new Date(order.reviewedAt).toLocaleTimeString('th-TH')}
+                      อนุมัติแล้วโดย Admin ID: {order.reviewedBy ?? '-'}
+                      {order.reviewedAt &&
+                              ` เมื่อ ${new Date(order.reviewedAt).toLocaleString('th-TH')}`}
                     </p>
                   )}
                 </div>

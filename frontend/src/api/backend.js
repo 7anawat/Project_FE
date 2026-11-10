@@ -118,4 +118,80 @@ export function updateBook(bookId, fields, token) {
 export function deleteBook(bookId, token) {
   return apiFetch(`/api/admin/books/${bookId}`, { method: 'DELETE', token });
 }
+// ---------- Upload API (Multipart Form Data) ----------
+export async function apiUpload(path, formData, token) {
+  const headers = {};
 
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  const data = await res.json()
+    .catch(() => ({ error: 'server ไม่ได้ตอบเป็น JSON' }));
+
+  if (!res.ok) {
+    const err = new Error(
+      data.error?.message ??
+      data.error ??
+      `server ตอบกลับ ${res.status}`
+    );
+    err.status = res.status;
+    throw err;
+  }
+
+  return data;
+}
+// ---------- Orders ----------
+export async function createOrder({ items, slipFile, slipNote, transferBank }, token) {
+  const formData = new FormData();
+
+  const bookIds = items.map((item) => Number(item.id));
+
+  if (bookIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new Error('รหัสหนังสือไม่ถูกต้อง กรุณาตรวจสอบรายการในตะกร้า');
+  }
+
+  formData.append('bookIds', JSON.stringify(bookIds));
+  formData.append('slip', slipFile);
+  formData.append('slipNote', slipNote || '');
+  formData.append('transferBank', transferBank || '');
+
+  const data = await apiUpload('/api/me/orders', formData, token);
+  return data.order;
+}
+
+export async function getMyOrders(token) {
+  const data = await apiFetch('/api/me/orders', { token });
+  return data.items || [];
+}
+
+export async function getAdminOrders(token) {
+  const data = await apiFetch('/api/admin/orders', { token });
+  return data.items || [];
+}
+
+export function approveOrder(orderId, token) {
+  return apiFetch(`/api/admin/orders/${orderId}/approve`, {
+    method: 'POST',
+    token,
+  });
+}
+
+export function rejectOrder(orderId, reason, token) {
+  return apiFetch(`/api/admin/orders/${orderId}/reject`, {
+    method: 'POST',
+    body: { reason },
+    token,
+  });
+}
+
+export async function getMyLibrary(token) {
+  const data = await apiFetch('/api/me/library', { token });
+  return data.items || [];
+}

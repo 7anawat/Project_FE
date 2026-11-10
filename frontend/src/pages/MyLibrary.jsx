@@ -1,34 +1,58 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import * as api from '../api/backend';
 
 function MyLibrary() {
-  const { member } = useAuth();
+  const { member, token } = useAuth();
+
   const [books, setBooks] = useState([]);
   const [readingBook, setReadingBook] = useState(null);
   const [fontSize, setFontSize] = useState(16);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!member?.id) return;
-    function loadLibrary() {
-      try {
-        const saved = localStorage.getItem(`bookhub_library_${member.id}`);
-        setBooks(saved ? JSON.parse(saved) : []);
-      } catch {
+    let active = true;
+
+    async function loadLibrary() {
+      if (!token || !member?.id) {
         setBooks([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const data = await api.getMyLibrary(token);
+
+        if (active) {
+          setBooks(data);
+        }
+      } catch (err) {
+        console.error('Load library failed:', err);
+
+        if (active) {
+          setError(err.message || 'ไม่สามารถโหลดชั้นหนังสือได้');
+          setBooks([]);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
     loadLibrary();
-    window.addEventListener('bookhub_library_updated', loadLibrary);
-    window.addEventListener('storage', loadLibrary);
+
     return () => {
-      window.removeEventListener('bookhub_library_updated', loadLibrary);
-      window.removeEventListener('storage', loadLibrary);
+      active = false;
     };
-  }, [member?.id]);
+  }, [token, member?.id]);
 
   function handleDownload(book) {
     setDownloadMsg(`กำลังเตรียมดาวน์โหลด "${book.title}" (PDF & ePub)...`);
@@ -53,11 +77,30 @@ function MyLibrary() {
         </div>
       )}
 
-      {books.length === 0 ? (
+      {loading ? (
+        <div className="rounded-2xl border border-amber-100 bg-white py-16 text-center">
+          <p className="text-4xl">⏳</p>
+          <p className="mt-4 text-sm text-slate-500">
+            กำลังโหลดชั้นหนังสือ...
+          </p>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-red-200 bg-white py-12 text-center">
+          <p className="text-4xl">⚠️</p>
+          <h2 className="mt-4 text-lg font-semibold text-slate-800">
+            ไม่สามารถโหลดชั้นหนังสือได้
+          </h2>
+          <p className="mt-2 text-sm text-red-600">{error}</p>
+        </div>
+      ) : books.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-amber-200 bg-white py-16 text-center">
           <p className="text-5xl">📖</p>
-          <h2 className="mt-4 text-lg font-semibold text-slate-800">ชั้นหนังสือของคุณยังว่างอยู่</h2>
-          <p className="mt-1 text-sm text-slate-500">คุณยังไม่ได้ซื้อ E-Book เล่มใดในขณะนี้</p>
+          <h2 className="mt-4 text-lg font-semibold text-slate-800">
+            ชั้นหนังสือของคุณยังว่างอยู่
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            คุณยังไม่ได้ซื้อ E-Book เล่มใดในขณะนี้
+          </p>
           <Link
             to="/books"
             className="mt-6 inline-block rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-amber-600 transition shadow-sm"
@@ -135,15 +178,13 @@ function MyLibrary() {
       {readingBook && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 md:p-6 backdrop-blur-sm">
           <div
-            className={`relative flex h-full max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl shadow-2xl transition-colors ${
-              isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'
-            }`}
+            className={`relative flex h-full max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl shadow-2xl transition-colors ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'
+              }`}
           >
             {/* Header / Controls */}
             <div
-              className={`flex flex-wrap items-center justify-between border-b px-6 py-3.5 text-sm ${
-                isDarkMode ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/70'
-              }`}
+              className={`flex flex-wrap items-center justify-between border-b px-6 py-3.5 text-sm ${isDarkMode ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/70'
+                }`}
             >
               <div className="min-w-0 pr-4">
                 <h3 className="font-bold truncate text-base">{readingBook.title}</h3>
@@ -236,9 +277,8 @@ function MyLibrary() {
 
             {/* Footer Reader */}
             <div
-              className={`flex items-center justify-between border-t px-6 py-3 text-xs ${
-                isDarkMode ? 'border-slate-800 bg-slate-950/40 text-slate-400' : 'border-slate-100 bg-slate-50/70 text-slate-500'
-              }`}
+              className={`flex items-center justify-between border-t px-6 py-3 text-xs ${isDarkMode ? 'border-slate-800 bg-slate-950/40 text-slate-400' : 'border-slate-100 bg-slate-50/70 text-slate-500'
+                }`}
             >
               <span>กำลังอ่านฉบับเต็ม</span>
               <button

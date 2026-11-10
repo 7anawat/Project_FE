@@ -11,57 +11,90 @@ function Cart() {
 
   const [step, setStep] = useState('cart'); // 'cart' | 'payment' | 'success'
   const [slipUrl, setSlipUrl] = useState(null);
+  const [slipFile, setSlipFile] = useState(null);
   const [slipNote, setSlipNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [transferBank, setTransferBank] = useState('ธนาคารกสิกรไทย');
   const [errorMsg, setErrorMsg] = useState(null);
   const [submittedOrder, setSubmittedOrder] = useState(null);
 
   // อัปโหลดและแปลงสลิปเป็น Data URL
   function handleFileChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg('กรุณาเลือกไฟล์รูปภาพเท่านั้น (JPG, PNG)');
-      return;
-    }
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
 
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg('ขนาดรูปภาพต้องไม่เกิน 5MB');
-      return;
-    }
-
-    setErrorMsg(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSlipUrl(reader.result);
-    };
-    reader.readAsDataURL(file);
+  if (!allowedTypes.includes(file.type)) {
+    setErrorMsg('รองรับเฉพาะไฟล์ JPG, PNG และ WEBP เท่านั้น');
+    setSlipFile(null);
+    setSlipUrl(null);
+    e.target.value = '';
+    return;
   }
 
-  function handleSubmitOrder(e) {
-    e.preventDefault();
-    if (!slipUrl) {
-      setErrorMsg('กรุณาแนบรูปภาพสลิปการโอนเงินเพื่อยืนยันคำสั่งซื้อ');
-      return;
-    }
-
-    try {
-      const order = createOrder({
-        items,
-        totalAmount: totalPrice,
-        slipUrl,
-        slipNote,
-        transferBank,
-      });
-
-      setSubmittedOrder(order);
-      clearCart();
-      setStep('success');
-    } catch (err) {
-      setErrorMsg(err.message || 'เกิดข้อผิดพลาดในการส่งคำสั่งซื้อ');
-    }
+  if (file.size > 5 * 1024 * 1024) {
+    setErrorMsg('ขนาดรูปภาพต้องไม่เกิน 5MB');
+    setSlipFile(null);
+    setSlipUrl(null);
+    e.target.value = '';
+    return;
   }
+
+  setErrorMsg(null);
+  setSlipFile(file);
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    setSlipUrl(reader.result);
+  };
+
+  reader.onerror = () => {
+    setErrorMsg('ไม่สามารถอ่านไฟล์รูปภาพได้');
+    setSlipFile(null);
+    setSlipUrl(null);
+  };
+
+  reader.readAsDataURL(file);
+}
+
+ async function handleSubmitOrder(e) {
+  e.preventDefault();
+
+  if (!items.length) {
+    setErrorMsg('ไม่มีสินค้าในตะกร้า');
+    return;
+  }
+
+  if (!slipFile) {
+    setErrorMsg('กรุณาแนบรูปภาพสลิปการโอนเงินเพื่อยืนยันคำสั่งซื้อ');
+    return;
+  }
+
+  if (isSubmitting) return;
+
+  setIsSubmitting(true);
+  setErrorMsg(null);
+
+  try {
+    const order = await createOrder({
+      items,
+      slipFile,
+      slipNote,
+      transferBank,
+    });
+
+    setSubmittedOrder(order);
+    clearCart();
+    setStep('success');
+  } catch (err) {
+    console.error('Create order failed:', err);
+    setErrorMsg(err.message || 'เกิดข้อผิดพลาดในการส่งคำสั่งซื้อ');
+  } finally {
+    setIsSubmitting(false);
+  }
+}
 
   // หน้าสำเร็จ (Order Success)
   if (step === 'success') {
@@ -244,7 +277,7 @@ function Cart() {
                 </label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   onChange={handleFileChange}
                   required
                   className="w-full text-xs text-[#736B5F] file:mr-2 file:rounded-full file:border-0 file:bg-[#2D2A26] file:px-4 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-[#433F3A] cursor-pointer"
@@ -274,10 +307,13 @@ function Cart() {
 
               <button
                 type="submit"
-                className="w-full rounded-full bg-[#2D2A26] py-3 text-xs md:text-sm font-bold text-white shadow-md hover:bg-[#433F3A] transition active:scale-[0.99]"
-              >
-                ยืนยันการสั่งซื้อและส่งสลิป
-              </button>
+                      disabled={isSubmitting}
+                      className="w-full rounded-full bg-[#2D2A26] py-3 text-xs md:text-sm font-bold text-white shadow-md hover:bg-[#433F3A] transition active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+>
+                      {isSubmitting
+                      ? 'กำลังส่งคำสั่งซื้อ...'
+                      : 'ยืนยันการสั่งซื้อและส่งสลิป'}
+                </button>
             </form>
           </div>
         </div>

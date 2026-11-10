@@ -1,169 +1,160 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
 import { useAuth } from '../auth/AuthContext';
+import * as api from '../api/backend';
 
 const OrderContext = createContext(null);
-const STORAGE_KEY = 'bookhub_all_orders';
 
 export function OrderProvider({ children }) {
-  const { member } = useAuth();
+  const { member, token, isAdmin } = useAuth();
 
-  const [orders, setOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // โหลดคำสั่งซื้อจาก Backend
+  const refreshOrders = useCallback(async () => {
+    if (!token || !member?.id) {
+      setOrders([]);
       return [];
     }
-  });
 
-  // บันทึกและกระจาย event เมื่อ orders เปลี่ยนแปลง
-  const saveOrders = useCallback((newOrders) => {
-    setOrders(newOrders);
+    setLoading(true);
+    setError(null);
+
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newOrders));
-      window.dispatchEvent(new Event('bookhub_orders_updated'));
-    } catch (e) {
-      console.error('Failed to save orders:', e);
-    }
-  }, []);
+      const data = isAdmin
+        ? await api.getAdminOrders(token)
+        : await api.getMyOrders(token);
 
-  // ซิงก์ orders ข้าม tabs / components
+      setOrders(data);
+      return data;
+    } catch (err) {
+      setError(err.message || 'ไม่สามารถโหลดคำสั่งซื้อได้');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token, member?.id, isAdmin]);
+
+  // โหลดข้อมูลเมื่อเข้าสู่ระบบ หรือเปลี่ยนบัญชี
   useEffect(() => {
-    function handleSync() {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          setOrders(JSON.parse(saved));
-        }
-      } catch {}
-    }
-    window.addEventListener('storage', handleSync);
-    window.addEventListener('bookhub_orders_updated', handleSync);
-    return () => {
-      window.removeEventListener('storage', handleSync);
-      window.removeEventListener('bookhub_orders_updated', handleSync);
-    };
-  }, []);
-
-  // สร้างคำสั่งซื้อใหม่ (แนบสลิป)
-  function createOrder({ items, totalAmount, slipUrl, slipNote = '', transferBank = 'โอนเงินผ่านธนาคาร' }) {
-    if (!member?.id || !items || items.length === 0) {
-      throw new Error('ข้อมูลคำสั่งซื้อไม่ครบถ้วน');
+    if (!token || !member?.id) {
+      setOrders([]);
+      return;
     }
 
-    const newOrder = {
-      id: `ORD-${Date.now().toString().slice(-6)}`,
-      memberId: member.id,
-      memberName: member.displayName || 'สมาชิก',
-      memberEmail: member.email || '',
-      items: items.map((b) => ({
-        id: b.id,
-        title: b.title,
-        author: b.author,
-        priceTHB: b.priceTHB,
-        coverUrl: b.coverUrl,
-        category: b.category,
-      })),
-      totalAmount: Number(totalAmount) || 0,
-      slipUrl: slipUrl || null,
-      slipNote: slipNote.trim(),
+    refreshOrders().catch((err) => {
+      console.error('Load orders failed:', err);
+    });
+  }, [refreshOrders, token, member?.id]);
+
+  // สมาชิกสร้างคำสั่งซื้อ
+  const createOrder = useCallback(async ({
+    items,
+    slipFile,
+    slipNote = '',
+    transferBank = '',
+  }) => {
+    if (!token || !member?.id) {
+      throw new Error('กรุณาเข้าสู่ระบบก่อนสั่งซื้อ');
+    }
+
+    if (!items?.length || !slipFile) {
+      throw new Error('กรุณาตรวจสอบรายการหนังสือและแนบสลิป');
+    }
+
+    const order = await api.createOrder({
+      items,
+      slipFile,
+      slipNote,
       transferBank,
-      status: 'pending', // 'pending' | 'approved' | 'rejected'
-      createdAt: new Date().toISOString(),
-      reviewedAt: null,
-      reviewedBy: null,
-      rejectReason: null,
-    };
+    }, token);
 
-    const updated = [newOrder, ...orders];
-    saveOrders(updated);
-    return newOrder;
-  }
+    await refreshOrders();
 
-  // แอดมินอนุมัติการโอนเงิน -> เพิ่มหนังสือเข้าคลังของ Member อัตโนมัติ!
-  function approveOrder(orderId, adminName = 'Admin') {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) return false;
+    return order;
+  }, [token, member?.id, refreshOrders]);
 
-    // 1. เพิ่มหนังสือเข้าสู่ชั้นหนังสือของ Member คนนั้น
-    try {
-      const libKey = `bookhub_library_${targetOrder.memberId}`;
-      const existingLib = JSON.parse(localStorage.getItem(libKey) || '[]');
-      const newLib = [...existingLib];
-
-      targetOrder.items.forEach((item) => {
-        if (!newLib.some((b) => b.id === item.id)) {
-          newLib.push({
-            ...item,
-            purchasedAt: new Date().toISOString(),
-            orderId: targetOrder.id,
-          });
-        }
-      });
-
-      localStorage.setItem(libKey, JSON.stringify(newLib));
-      window.dispatchEvent(new Event('bookhub_library_updated'));
-    } catch (e) {
-      console.error('Failed to update member library:', e);
+  // Admin อนุมัติคำสั่งซื้อ
+  const approveOrder = useCallback(async (orderId) => {
+    if (!token || !isAdmin) {
+      throw new Error('คุณไม่มีสิทธิ์อนุมัติคำสั่งซื้อ');
     }
 
-    // 2. อัปเดตสถานะของคำสั่งซื้อเป็น approved
-    const updated = orders.map((o) =>
-      o.id === orderId
-        ? {
-            ...o,
-            status: 'approved',
-            reviewedAt: new Date().toISOString(),
-            reviewedBy: adminName,
-          }
-        : o
-    );
+    try {
+      await api.approveOrder(orderId, token);
+      await refreshOrders();
+      return true;
+    } catch (err) {
+      // หากมี Admin คนอื่นดำเนินการไปแล้ว ให้โหลดสถานะล่าสุด
+      if (err.status === 409) {
+        await refreshOrders().catch(() => {});
+      }
+      throw err;
+    }
+  }, [token, isAdmin, refreshOrders]);
 
-    saveOrders(updated);
-    return true;
-  }
+  // Admin ปฏิเสธคำสั่งซื้อ
+  const rejectOrder = useCallback(async (orderId, reason) => {
+    if (!token || !isAdmin) {
+      throw new Error('คุณไม่มีสิทธิ์ปฏิเสธคำสั่งซื้อ');
+    }
 
-  // แอดมินปฏิเสธคำสั่งซื้อ
-  function rejectOrder(orderId, reason = 'ยอดเงินหรือสลิปไม่ถูกต้อง', adminName = 'Admin') {
-    const updated = orders.map((o) =>
-      o.id === orderId
-        ? {
-            ...o,
-            status: 'rejected',
-            rejectReason: reason,
-            reviewedAt: new Date().toISOString(),
-            reviewedBy: adminName,
-          }
-        : o
-    );
+    try {
+      await api.rejectOrder(orderId, reason, token);
+      await refreshOrders();
+      return true;
+    } catch (err) {
+      if (err.status === 409) {
+        await refreshOrders().catch(() => {});
+      }
+      throw err;
+    }
+  }, [token, isAdmin, refreshOrders]);
 
-    saveOrders(updated);
-    return true;
-  }
+  // คำสั่งซื้อของสมาชิกปัจจุบัน
+  const myOrders = isAdmin
+    ? []
+    : orders.filter((order) => Number(order.memberId) === Number(member?.id));
 
   // จำนวนคำสั่งซื้อที่รอตรวจสอบ
-  const pendingCount = orders.filter((o) => o.status === 'pending').length;
-
-  // รายการคำสั่งซื้อของ member ปัจจุบัน
-  const myOrders = member?.id ? orders.filter((o) => o.memberId === member.id) : [];
+  const pendingCount = orders.filter(
+    (order) => order.status === 'pending'
+  ).length;
 
   const value = {
     orders,
     myOrders,
     pendingCount,
+    loading,
+    error,
+    refreshOrders,
     createOrder,
     approveOrder,
     rejectOrder,
   };
 
-  return <OrderContext.Provider value={value}>{children}</OrderContext.Provider>;
+  return (
+    <OrderContext.Provider value={value}>
+      {children}
+    </OrderContext.Provider>
+  );
 }
 
 export function useOrders() {
   const ctx = useContext(OrderContext);
+
   if (!ctx) {
     throw new Error('useOrders must be used within an OrderProvider');
   }
+
   return ctx;
 }
-
