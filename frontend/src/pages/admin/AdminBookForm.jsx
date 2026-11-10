@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
-import { getAdminBook, getCategories, createBook, updateBook, deleteBook } from '../../api/backend';
+import { getAdminBook, createBook, updateBook, deleteBook } from '../../api/backend';
 import { ErrorBox, Loading, ConfirmBox, btnPrimary, btnDanger, inputClass } from '../../components/admin/AdminStates';
 
 const EMPTY = {
@@ -17,7 +17,6 @@ function AdminBookForm() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState(EMPTY);
-  const [categories, setCategories] = useState([]);
   const [status, setStatus] = useState('loading');
   const [loadError, setLoadError] = useState(null);
   const [serverError, setServerError] = useState(null);
@@ -30,12 +29,8 @@ function AdminBookForm() {
     async function load() {
       setStatus('loading');
       try {
-        const [cats, book] = await Promise.all([
-          getCategories().catch(() => []),
-          isEdit ? getAdminBook(id, token) : null
-        ]);
+        const book = isEdit ? await getAdminBook(id, token) : null;
         if (ignore) return;
-        setCategories(cats);
         if (book) {
           setForm({
             title: book.title ?? '',
@@ -184,7 +179,7 @@ function AdminBookForm() {
       </form>
 
       <ConfirmBox open={confirmDelete} title={`ลบ "${form.title}" ?`} confirmText="ลบถาวร"
-                  busy={deleting} onConfirm={handleDelete} onCancel={() => setConfirmDelete(false)}>
+        busy={deleting} onConfirm={handleDelete} onCancel={() => setConfirmDelete(false)}>
         <p>หนังสือเล่มนี้และข้อมูลรีวิวจะถูกลบออกถาวร</p>
       </ConfirmBox>
     </div>
