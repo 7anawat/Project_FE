@@ -55,6 +55,20 @@ export function OrderProvider({ children }) {
       console.error('Load orders failed:', err);
     });
   }, [refreshOrders, token, member?.id]);
+  // โหลดคำสั่งซื้อซ้ำทุก 10 วินาที เพื่อให้ Admin เห็นข้อมูลล่าสุด
+  useEffect(() => {
+    if (!token || !member?.id || !isAdmin) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      refreshOrders().catch((err) => {
+        console.error('Auto refresh orders failed:', err);
+      });
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [token, member?.id, isAdmin, refreshOrders]);
 
   // สมาชิกสร้างคำสั่งซื้อ
   const createOrder = useCallback(async ({
@@ -96,7 +110,7 @@ export function OrderProvider({ children }) {
     } catch (err) {
       // หากมี Admin คนอื่นดำเนินการไปแล้ว ให้โหลดสถานะล่าสุด
       if (err.status === 409) {
-        await refreshOrders().catch(() => {});
+        await refreshOrders().catch(() => { });
       }
       throw err;
     }
@@ -114,7 +128,7 @@ export function OrderProvider({ children }) {
       return true;
     } catch (err) {
       if (err.status === 409) {
-        await refreshOrders().catch(() => {});
+        await refreshOrders().catch(() => { });
       }
       throw err;
     }
