@@ -169,6 +169,14 @@ export async function apiUpload(path, formData, token) {
 
   return data;
 }
+// ---------- Avatar ----------
+export function uploadMyAvatar(file, token) {
+  const formData = new FormData();
+
+  formData.append('avatar', file);
+
+  return apiUpload('/api/me/avatar', formData, token);
+}
 // ---------- Orders ----------
 export async function createOrder({ items, slipFile, slipNote, transferBank }, token) {
   const formData = new FormData();

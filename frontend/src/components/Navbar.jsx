@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -17,6 +17,14 @@ function Navbar() {
   const navigate = useNavigate();
   const [navSearch, setNavSearch] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [avatarBroken, setAvatarBroken] = useState(false);
+
+  const memberInitial =
+    member?.displayName?.trim()?.charAt(0)?.toUpperCase() || 'U';
+
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [member?.avatarUrl]);
 
   function handleLogout() {
     logout();
@@ -115,8 +123,17 @@ function Navbar() {
                 onClick={() => setShowUserMenu(!showUserMenu)}
                 className="flex items-center gap-2 rounded-full border border-[#E2D9CB] bg-white px-3 py-1.5 text-xs font-semibold text-[#2D2A26] hover:bg-[#F3ECE0] transition shadow-2xs"
               >
-                <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#EAE2D2] text-[10px]">
-                  👤
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#E2D9CB] bg-[#EAE2D2] text-xs font-bold text-[#2D2A26]">
+                  {member?.avatarUrl && !avatarBroken ? (
+                    <img
+                      src={member.avatarUrl}
+                      alt="รูปโปรไฟล์"
+                      className="h-full w-full object-cover"
+                      onError={() => setAvatarBroken(true)}
+                    />
+                  ) : (
+                    memberInitial
+                  )}
                 </div>
                 <span className="hidden md:inline max-w-[100px] truncate">{member?.displayName}</span>
               </button>

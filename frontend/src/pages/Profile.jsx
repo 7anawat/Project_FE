@@ -3,8 +3,21 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
 function Profile() {
-  const { member, updateProfile, changePassword } = useAuth();
+  const {
+    member,
+    updateProfile,
+    changePassword,
+    uploadAvatar,
+  } = useAuth();
 
+  // รูปโปรไฟล์
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState('');
+  const [avatarBroken, setAvatarBroken] = useState(false);
+
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarMessage, setAvatarMessage] = useState('');
+  const [avatarError, setAvatarError] = useState('');
   const [profile, setProfile] = useState({
     email: member?.email || '',
     displayName: member?.displayName || '',
@@ -32,6 +45,78 @@ function Profile() {
       displayName: member?.displayName || '',
     });
   }, [member?.email, member?.displayName]);
+  // สร้างภาพตัวอย่างก่อนอัปโหลด
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreview('');
+      return;
+    }
+
+    const previewURL = URL.createObjectURL(avatarFile);
+    setAvatarPreview(previewURL);
+
+    return () => {
+      URL.revokeObjectURL(previewURL);
+    };
+  }, [avatarFile]);
+
+  // รีเซ็ตเมื่อ URL รูปเปลี่ยน
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [member?.avatarUrl, avatarPreview]);
+  // เลือกรูปโปรไฟล์
+  function handleAvatarSelect(e) {
+    const file = e.target.files?.[0];
+
+    // ล้างค่า input เพื่อให้เลือกไฟล์เดิมซ้ำได้
+    e.target.value = '';
+
+    if (!file) return;
+
+    setAvatarMessage('');
+    setAvatarError('');
+
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setAvatarError('รองรับเฉพาะ JPG, PNG และ WEBP');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('รูปภาพต้องมีขนาดไม่เกิน 5 MB');
+      return;
+    }
+
+    setAvatarFile(file);
+  }
+
+  // อัปโหลดรูปโปรไฟล์
+  async function handleAvatarUpload() {
+    if (!avatarFile) {
+      setAvatarError('กรุณาเลือกรูปภาพก่อน');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    setAvatarMessage('');
+    setAvatarError('');
+
+    try {
+      await uploadAvatar(avatarFile);
+
+      setAvatarFile(null);
+      setAvatarMessage('เปลี่ยนรูปโปรไฟล์เรียบร้อยแล้ว');
+    } catch (err) {
+      setAvatarError(err.message || 'ไม่สามารถอัปโหลดรูปได้');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   function handleProfileChange(e) {
     const { name, value } = e.target;
@@ -154,13 +239,38 @@ function Profile() {
 
       {/* Member information */}
       <div className="mb-8 overflow-hidden rounded-2xl border border-amber-100 bg-white shadow-sm">
+
         <div className="bg-gradient-to-r from-amber-50 to-white p-6">
+          {/* ข้อมูลสมาชิก */}
           <div className="flex flex-wrap items-center gap-4">
 
-            <div className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-amber-500 text-2xl font-bold text-white shadow-sm">
-              {initial}
+            {/* รูปโปรไฟล์ */}
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              <div className="grid h-20 w-20 overflow-hidden rounded-2xl border-2 border-amber-200 bg-amber-100 place-items-center text-2xl font-bold text-amber-800 shadow-sm">
+                {avatarPreview ? (
+                  <img
+                    src={avatarPreview}
+                    alt="ตัวอย่างรูปโปรไฟล์"
+                    className="h-full w-full object-cover"
+                  />
+                ) : member?.avatarUrl && !avatarBroken ? (
+                  <img
+                    src={member.avatarUrl}
+                    alt="รูปโปรไฟล์"
+                    className="h-full w-full object-cover"
+                    onError={() => setAvatarBroken(true)}
+                  />
+                ) : (
+                  initial
+                )}
+              </div>
+
+              <span className="text-xs text-slate-500">
+                รูปโปรไฟล์
+              </span>
             </div>
 
+            {/* ชื่อและอีเมล */}
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-xl font-bold text-slate-900">
                 {member?.displayName || 'สมาชิก BookHub'}
@@ -174,9 +284,68 @@ function Profile() {
                 {member?.role === 'admin' ? 'ผู้ดูแลระบบ' : 'สมาชิก'}
               </span>
             </div>
+          </div>
 
+          {/* ส่วนจัดการรูปโปรไฟล์ */}
+          <div className="mt-5 border-t border-amber-100 pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+
+              <label
+                htmlFor="avatar-upload"
+                className="cursor-pointer rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-50"
+              >
+                เลือกรูปภาพ
+              </label>
+
+              <input
+                id="avatar-upload"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleAvatarSelect}
+                className="sr-only"
+              />
+
+              {avatarFile && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleAvatarUpload}
+                    disabled={uploadingAvatar}
+                    className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {uploadingAvatar ? 'กำลังอัปโหลด...' : 'อัปโหลดรูป'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAvatarFile(null)}
+                    disabled={uploadingAvatar}
+                    className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600 hover:bg-slate-200 disabled:opacity-60"
+                  >
+                    ยกเลิก
+                  </button>
+                </>
+              )}
+            </div>
+
+            <p className="mt-2 text-xs text-slate-400">
+              รองรับ JPG, PNG, WEBP ขนาดไม่เกิน 5 MB
+            </p>
+
+            {avatarMessage && (
+              <p className="mt-2 text-sm text-emerald-600">
+                ✓ {avatarMessage}
+              </p>
+            )}
+
+            {avatarError && (
+              <p className="mt-2 text-sm text-red-600">
+                ⚠️ {avatarError}
+              </p>
+            )}
           </div>
         </div>
+
 
         <div className="grid gap-4 border-t border-slate-100 p-5 sm:grid-cols-2">
           <div>
