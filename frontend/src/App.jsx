@@ -15,6 +15,7 @@ import Wishlist from './pages/Wishlist';
 import Cart from './pages/Cart';
 import MyLibrary from './pages/MyLibrary';
 import MyOrders from './pages/MyOrders';
+import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import RequireRole from './components/RequireRole';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -41,8 +42,10 @@ function App() {
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
                 <Route path="/me/library" element={<ProtectedRoute><MyLibrary /></ProtectedRoute>} />
                 <Route path="/me/orders" element={<ProtectedRoute><MyOrders /></ProtectedRoute>} />
+                <Route path="/me/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/me/wishlist" element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
                 <Route path="/admin" element={<RequireRole role="admin"><AdminLayout /></RequireRole>}>
+                
                   <Route index element={<AdminDashboard />} />
                   <Route path="orders" element={<AdminOrders />} />
                   <Route path="books" element={<AdminBooks />} />

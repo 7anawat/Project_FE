@@ -130,6 +130,13 @@ function Navbar() {
                   </div>
                   <div className="py-1 text-xs text-[#524C44] space-y-0.5">
                     <Link
+                      to="/me/profile"
+                      onClick={() => setShowUserMenu(false)}
+                      className="block rounded-lg px-3 py-1.5 hover:bg-[#F6F1E8]"
+                    >
+                      👤 โปรไฟล์ของฉัน
+                    </Link>
+                    <Link
                       to="/me/library"
                       onClick={() => setShowUserMenu(false)}
                       className="block rounded-lg px-3 py-1.5 hover:bg-[#F6F1E8]"

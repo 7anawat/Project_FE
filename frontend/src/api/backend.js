@@ -42,6 +42,28 @@ export function getMe(token) {
   return apiFetch('/api/me', { token });
 }
 
+// ---------- Profile ----------
+export function updateMyProfile({ email, displayName }, token) {
+  return apiFetch('/api/me/profile', {
+    method: 'PUT',
+    body: { email, displayName },
+    token,
+  });
+}
+
+// ---------- Change Password ----------
+export function changeMyPassword(currentPassword, newPassword, token) {
+  return apiFetch('/api/me/password', {
+    method: 'PUT',
+    body: {
+      currentPassword,
+      newPassword,
+    },
+    token,
+  });
+}
+
+
 // ---------- หนังสือ ----------
 export async function getBooks(q = '', category = '') {
   const params = new URLSearchParams();
